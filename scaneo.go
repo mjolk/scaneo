@@ -358,13 +358,13 @@ func genFile(outFile, pkg string, unexport bool, toks []structToken) error {
 		Visibility  string
 	}{
 		PackageName: pkg,
-		Visibility:  "S",
+		Visibility:  "G",
 		Tokens:      toks,
 	}
 
 	if unexport {
 		// func name will be scanFoo instead of ScanFoo
-		data.Visibility = "s"
+		data.Visibility = "g"
 	}
 
 	fnMap := template.FuncMap{"title": strings.Title}
