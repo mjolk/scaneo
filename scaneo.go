@@ -68,14 +68,19 @@ NOTES
 )
 
 type fieldToken struct {
-	Name string
-	Type string
+	Name  string
+	Type  string
+	Slice bool
 }
 
 type structToken struct {
-	Name   string
-	Fields []fieldToken
+	Name       string
+	Fields     []fieldToken
+	Composite  bool
+	ProxyTypes []string
 }
+
+var structLookup map[string]structToken
 
 func main() {
 	log.SetFlags(0)
@@ -133,9 +138,75 @@ func main() {
 		structToks = append(structToks, toks...)
 	}
 
-	if err := genFile(*outFilename, *packName, *unexport, structToks); err != nil {
+	//fmt.Println(structToks)
+
+	newStructToks := make([]structToken, 0)
+
+	for _, structTk := range structToks {
+		newStructTk := structToken{Name: structTk.Name, Fields: make([]fieldToken, 0), Composite: false}
+		relations := make([]string, 0)
+		for _, sf := range structTk.Fields {
+			isSlice, embeddedStruct := isRelation(sf)
+			if embeddedStruct == "" {
+				newStructTk.Fields = append(newStructTk.Fields, sf)
+				continue
+			}
+			if isSlice {
+				relations = addProxyType(relations, sf.Name)
+			}
+			newStructTk.Composite = true
+			emb := structLookup[embeddedStruct]
+			for _, field := range emb.Fields {
+				//only 1 layer
+				_, embedded := isRelation(field)
+				if embedded != "" {
+					continue
+				}
+				name := sf.Name + "." + field.Name
+				if isSlice {
+					name = "proxy" + name
+				}
+				nf := fieldToken{Name: name, Type: field.Type,
+					Slice: isSlice}
+				newStructTk.Fields = append(newStructTk.Fields, nf)
+			}
+		}
+		newStructTk.ProxyTypes = relations
+		newStructToks = append(newStructToks, newStructTk)
+		//fmt.Println(newStructTk)
+	}
+
+	fmt.Println(newStructToks)
+
+	if err := genFile(*outFilename, *packName, *unexport, newStructToks); err != nil {
 		log.Fatal("couldn't generate file:", err)
 	}
+}
+
+func addProxyType(relations []string, tpe string) []string {
+	if len(relations) > 0 {
+		for _, rel := range relations {
+			if rel == tpe {
+				return relations
+			}
+		}
+	}
+	relations = append(relations, tpe)
+	return relations
+}
+
+func isRelation(ft fieldToken) (bool, string) {
+	var embeddedStruct string = ""
+	var isSlice bool = false
+	//var isSlice bool = false
+	if strings.HasPrefix(ft.Type, "*") {
+		embeddedStruct = strings.TrimPrefix(ft.Type, "*")
+	}
+	if strings.HasPrefix(ft.Type, "[]*") {
+		embeddedStruct = strings.TrimPrefix(ft.Type, "[]*")
+		isSlice = true
+	}
+	return isSlice, embeddedStruct
 }
 
 func findFiles(paths []string) ([]string, error) {
@@ -192,6 +263,7 @@ func parseCode(source string, commaList string) ([]structToken, error) {
 	}
 
 	structToks := make([]structToken, 0, 8)
+	structLookup = make(map[string]structToken)
 
 	fset := token.NewFileSet()
 	astf, err := parser.ParseFile(fset, source, nil, 0)
@@ -280,6 +352,8 @@ func parseCode(source string, commaList string) ([]structToken, error) {
 			}
 
 			structToks = append(structToks, structTok)
+			structLookup[structTok.Name] = structToken{Name: structTok.Name, Fields: structTok.Fields}
+
 		}
 	}
 
@@ -341,6 +415,16 @@ func parseStar(fieldType *ast.StarExpr) string {
 	return fmt.Sprintf("*%s", starType)
 }
 
+func FieldOnly(prop string) string {
+	propSeq := strings.Split(prop, ".")
+	return propSeq[len(propSeq)-1]
+}
+
+func ProxyType(prop string) string {
+	propSeq := strings.Split(prop, ".")
+	return strings.TrimPrefix(propSeq[0], "proxy")
+}
+
 func genFile(outFile, pkg string, unexport bool, toks []structToken) error {
 	if len(toks) < 1 {
 		return errors.New("no structs found")
@@ -367,7 +451,9 @@ func genFile(outFile, pkg string, unexport bool, toks []structToken) error {
 		data.Visibility = "g"
 	}
 
-	fnMap := template.FuncMap{"title": strings.Title}
+	fnMap := template.FuncMap{"title": strings.Title,
+		"field": FieldOnly,
+		"proxy": ProxyType}
 	scansTmpl, err := template.New("scans").Funcs(fnMap).Parse(scansText)
 	if err != nil {
 		return err
