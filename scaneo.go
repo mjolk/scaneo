@@ -695,6 +695,24 @@ func genFile(outFile, pkg string, unexport bool, toks []*structToken) error {
 	}
 
 	fnMap := template.FuncMap{"title": strings.Title,
+		"isint": func(tpe string) bool {
+			if tpe == "int" {
+				return true
+			}
+			return false
+		},
+		"isbool": func(tpe string) bool {
+			if tpe == "bool" {
+				return true
+			}
+			return false
+		},
+		"isstring": func(tpe string) bool {
+			if tpe == "string" {
+				return true
+			}
+			return false
+		},
 		"switch2fk":         SwitchToFK,
 		"ffiltersliceandid": FilterSliceAndID,
 		"updatealias":       UpdateAlias,
@@ -705,6 +723,9 @@ func genFile(outFile, pkg string, unexport bool, toks []*structToken) error {
 		"native":            NativeField,
 		"plus1": func(x int) int {
 			return x + 1
+		},
+		"min1": func(x int) int {
+			return x - 1
 		}}
 	scansTmpl, err := template.New("scans").Funcs(fnMap).Parse(string(tmpl))
 	if err != nil {
