@@ -79,8 +79,7 @@ func {{$.Visibility}}oad{{title .Name}}s(rs *sql.Rows) ([]*{{.Name}}, error) {
 	var err error
 	result := make([]*{{.Name}}, 25)
 	for rs.Next() {
-		s := proxy{{.Name}}{ {{.Name}}:&{{.Name}}{}, {{range .OneToMany}}
-		proxy{{.Field}}:&{{.Type}}{},{{end}}
+		s := proxy{{.Name}}{ {{.Name}}:&{{.Name}}{ {{range $i, $f := .ManyToOne}}{{if $i}}, {{end}}{{.Field}}:&{{.Type}}{}{{end}} },{{$om := len .OneToMany}}{{range $j, $k := .OneToMany}}{{if $j}}, {{end}}proxy{{.Field}}:&{{.Type}}{}{{end}}{{if gt $om 0}},{{end}}{{$mm := len .ManyToMany}}{{range $l, $m := .ManyToMany}}{{if $l}}, {{end}}proxy{{.Field}}:&{{.Type}}{}{{end}}{{if gt $mm 0}},{{end}}
 		}
 		if err = rs.Scan({{range .Fields}}
 			&s.{{.Name}},{{end}}
